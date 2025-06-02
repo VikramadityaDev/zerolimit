@@ -42,3 +42,6 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 
 ## 🤝 Contributing
 **Feel free to fork, suggest features, or open a pull request.**
+
+## ✨ Author
+Made with ❤️ by VikramadityaDev
