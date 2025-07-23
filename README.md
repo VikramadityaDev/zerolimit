@@ -9,7 +9,7 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 - ✅ Leverage Telegram's "Saved Messages" as a **zero-cost storage** backend.
 - ✅ Deploy the backend using cloud hosting service.
 
-## 🚀 Planned Features
+## 🚀 Features
 - 📱 **Phone Number Login via Telegram**
 - 🔐 **Session-based Authentication**
 - 📨 **Send OTP and Handle 2FA**
