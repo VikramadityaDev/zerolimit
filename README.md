@@ -30,8 +30,6 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 | **Hosting**   | Railway (for backend)    |
 | **Storage**   | Telegram (Saved Messages) |
 
-## 🧪 Current Development Status
-- **UI in Flutter**
 
 ## 🧠 Learning Goals
 - **Deep understanding of Telegram MTProto API.**
