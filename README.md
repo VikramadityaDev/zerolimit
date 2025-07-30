@@ -23,10 +23,24 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 
 | Tier     | Max Upload Size | Cost               |
 |----------|------------------|--------------------|
-| Free     | 2 GB per file    | Free               |
-| Premium  | 4 GB per file    | Subscription-based |
+| Free     | 2GB per file    | Free               |
+| Premium  | 4GB per file    | Subscription-based |
 
-To enable 4 GB uploads, users must activate a Telegram Premium subscription.
+To enable 4GB uploads, users must activate a Telegram Premium subscription.
+
+## 📸 Screenshots
+
+## 📸 Screenshots
+
+| Login Screen | OTP Screen | 2FA Screen |
+|--------------|------------|------------|
+| <img src="screenshots/1 ss.png" width="250"/> | <img src="screenshots/2 ss.png" width="250"/> | <img src="screenshots/3 ss.png" width="250"/> |
+
+| Home Screen | Download Screen | Upload Screen |
+|-------------|-----------------|---------------|
+| <img src="screenshots/4 ss.png" width="250"/> | <img src="screenshots/5 ss.png" width="250"/> | <img src="screenshots/6 ss.png" width="250"/> |
+
+
 
 ## 🛠️ Planned Features (in development)
  
