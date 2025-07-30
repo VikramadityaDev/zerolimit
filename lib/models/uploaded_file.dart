@@ -1,0 +1,37 @@
+import 'package:hive/hive.dart';
+
+part 'uploaded_file.g.dart';
+
+@HiveType(typeId: 0)
+class UploadedFile extends HiveObject {
+  @HiveField(0)
+  final int fileId;
+
+  @HiveField(1)
+  final String name;
+
+  @HiveField(2)
+  final int size;
+
+  @HiveField(3)
+  final String path;
+
+  @HiveField(4)
+  final String? type;
+
+  @HiveField(5)
+  final String? thumbnail;
+
+  @HiveField(6)
+  final String? caption;
+
+  UploadedFile({
+    required this.fileId,
+    required this.name,
+    required this.size,
+    required this.path,
+    this.type,
+    this.thumbnail,
+    this.caption,
+  });
+}

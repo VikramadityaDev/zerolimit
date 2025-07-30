@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zerolimit/screens/bottom_bar.dart';
+import 'package:zerolimit/screens/home_src.dart';
 import 'package:zerolimit/screens/login_scr.dart';
 
 Future<void> setString(String value) async {
@@ -41,7 +42,7 @@ class _StartUpState extends State<StartUp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-        home: loginToken == '' ? LoginScreen() : BottomBar()
+        home: loginToken == '' ? LoginScreen() : HomeScreen()
     );
   }
 }

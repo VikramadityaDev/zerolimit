@@ -78,8 +78,8 @@ class _TwoFactorAuthState extends State<TwoFactorAuth> {
                   );
 
                   // Perform asynchronous operation
-                  // await loginService.checkPassword(
-                  //     widget.phone, password, context);
+                  await loginService.checkPassword(
+                      widget.phone, password, context);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color.fromRGBO(191, 107, 207, 1.0),
