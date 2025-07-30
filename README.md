@@ -30,8 +30,6 @@ To enable 4GB uploads, users must activate a Telegram Premium subscription.
 
 ## 📸 Screenshots
 
-## 📸 Screenshots
-
 | Login Screen | OTP Screen | 2FA Screen |
 |--------------|------------|------------|
 | <img src="screenshots/1 ss.png" width="250"/> | <img src="screenshots/2 ss.png" width="250"/> | <img src="screenshots/3 ss.png" width="250"/> |
