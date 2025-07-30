@@ -3,9 +3,7 @@
 Zerolimit is a cloud storage app that lets users securely upload and access their photos and videos via Telegram. It offers a clean, user-friendly interface for managing media without relying on traditional third-party cloud services.
 
 
-<p align="left">
-<a href="https://github.com/VikramadityaDev/zerolimit/releases/download/v1.0.0/app-armeabi-v7a-release.apk"><img src="https://img.shields.io/github/downloads/VikramadityaDev/zerolimit/total?color=g&label=Downloads&logo=android&logoColor=white&style=for-the-badge"></a>
-</p>
+
 
 ## 🎯 Project Goals
 - ✅ Offering **unlimited free storage** without depending on traditional cloud services like Google Drive or Dropbox.
