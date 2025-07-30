@@ -18,7 +18,20 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 - 📂 **View Uploaded Media**
 - 📤 **Download Media with Previews**
 - 🗂️ **Tag & Categorize Files**
-- ☁️ **Auto Upload from Gallery**
+
+## 📁 Tiered Upload Limits
+
+| Tier     | Max Upload Size | Cost               |
+|----------|------------------|--------------------|
+| Free     | 2 GB per file    | Free               |
+| Premium  | 4 GB per file    | Subscription-based |
+
+To enable 4 GB uploads, users must activate a Telegram Premium subscription.
+
+## 🛠️ Planned Features (in development)
+ 
+- **Auto‑upload from user's gallery to Telegram**  
+- **Possible integration: multi-file uploads**
 
 ## 🔧 Tech Stack
 | Layer         | Stack / Tools            |
@@ -31,15 +44,8 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 | **Storage**   | Telegram (Saved Messages) |
 
 
-## 🧠 Learning Goals
-- **Deep understanding of Telegram MTProto API.**
-- **Build asynchronous backend using Quart (async Flask).**
-- **Strengthen REST API skills.**
-- **Understanding session management and authentication flows.**
-- **Use Telegram as a creative alternative to paid cloud services.**
-
 ## 🤝 Contributing
-**Feel free to fork, suggest features, or open a pull request.**
+**Contributions are welcome! Whether it's improving the user interface or adding new features, feel free to fork this project, open issues, or submit pull requests.**
 
 ## ✨ Author
 Made with ❤️ by VikramadityaDev
