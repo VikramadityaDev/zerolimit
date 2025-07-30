@@ -4,7 +4,7 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 
 
 <p align="left">
-<a href="https://github.com/VikramadityaDev/zerolimit/releases/download/v1.0.0/app-armeabi-v7a-release.apk"><img src="https://img.shields.io/github/downloads/VikramadityaDev/zerolimit/total?color=g&label=Downloads&logo=android&logoColor=white&style=for-the-badge"></a>
+<a href="https://github.com/VikramadityaDev/zerolimit/releases/download/download/app-armeabi-v7a-release.apk"><img src="https://img.shields.io/github/downloads/VikramadityaDev/zerolimit/total?color=g&label=Downloads&logo=android&logoColor=white&style=for-the-badge"></a>
 </p>
 
 ## 🎯 Project Goals
