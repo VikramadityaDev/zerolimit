@@ -97,11 +97,9 @@ class LoginService {
             (Route<dynamic> route) => false,
       );
     } else if (response.statusCode == 401) {
-      print(response.body);
-      Navigator.pop(context);
+      throw Exception("Wrong 2FA password");
     } else {
-      print('Error: ${response.statusCode}');
-      Navigator.pop(context);
+      throw Exception("Server error: ${response.statusCode}");
     }
   }
 
