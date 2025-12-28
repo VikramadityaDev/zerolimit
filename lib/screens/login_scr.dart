@@ -14,9 +14,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController phoneNumberController = TextEditingController();
   final formKey = GlobalKey<FormState>();
   String? errorText;
-
+  bool isWaiting = false;
   Country selectedCountry = CountryPickerUtils.getCountryByIsoCode('IN');
-
   String get phoneNumber => phoneNumberController.text.trim();
 
   @override
@@ -102,22 +101,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
                 SizedBox(height: 24),
-
-                /// Submit button
                 ElevatedButton(
                   onPressed: () async {
                     final number = phoneNumber;
                     if (number.isEmpty) {
-                      setState(() => errorText = "Please enter your phone number");
+                      setState(() {
+                        errorText = "Please enter your phone number";
+                        isWaiting = false;
+                      });
                       return;
                     }
                     if (!RegExp(r'^[0-9]{6,15}$').hasMatch(number)) {
-                      setState(() => errorText = "Invalid phone number");
+                      setState(() {
+                        errorText = "Invalid phone number";
+                        isWaiting = false;
+                      });
                       return;
                     }
-
+                    setState(() {
+                      errorText = null;
+                      isWaiting = true;
+                    });
                     String fullPhone = '+${selectedCountry.phoneCode}$number';
                     await loginService.sendOtp(fullPhone, context);
                   },
@@ -130,7 +135,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Text("Next", style: TextStyle(fontSize: 20),),
+                  child: Text(
+                    isWaiting ? "Please wait.." : "Next",
+                    style: const TextStyle(fontSize: 20),
+                  ),
                 ),
                 const Spacer(),
               ],
