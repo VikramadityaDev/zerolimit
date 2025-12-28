@@ -14,6 +14,8 @@ class TwoFactorAuth extends StatefulWidget {
 class _TwoFactorAuthState extends State<TwoFactorAuth> {
   final loginService = LoginService();
   String password = '';
+  bool isWaiting = false;
+  String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +53,7 @@ class _TwoFactorAuthState extends State<TwoFactorAuth> {
                   onChanged: (value) {
                     setState(() {
                       password = value;
+                      errorText = null;
                     });
                   },
                   obscureText: true,
@@ -66,20 +69,46 @@ class _TwoFactorAuthState extends State<TwoFactorAuth> {
                   ),
                 ),
               ),
+              if (errorText != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    errorText!,
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: () async {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (BuildContext context) {
-                      return const Center(child: CircularProgressIndicator());
-                    },
-                  );
+                onPressed: isWaiting
+                    ? null
+                    : () async {
+                  if (password.isEmpty) {
+                    setState(() {
+                      errorText = "Password cannot be empty";
+                    });
+                    return;
+                  }
 
-                  // Perform asynchronous operation
-                  await loginService.checkPassword(
-                      widget.phone, password, context);
+                  setState(() {
+                    isWaiting = true;
+                    errorText = null;
+                  });
+
+                  try {
+                    await loginService.checkPassword(
+                      widget.phone,
+                      password,
+                      context,
+                    );
+                  } catch (e) {
+                    setState(() {
+                      errorText = "Incorrect password";
+                      isWaiting = false;
+                    });
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color.fromRGBO(191, 107, 207, 1.0),
@@ -93,7 +122,10 @@ class _TwoFactorAuthState extends State<TwoFactorAuth> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text("Next"),
+                child: Text(
+                  isWaiting ? "Please wait.." : "Next",
+                  style: const TextStyle(fontSize: 20),
+                ),
               ),
             ],
           ),
