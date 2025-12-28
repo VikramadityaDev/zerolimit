@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -28,11 +30,8 @@ Widget _buildFallbackIcon(String? type) {
     case 'apk':
       return const Icon(Icons.android, size: 80, color: Colors.white70);
     default:
-      return const Icon(
-        Icons.insert_drive_file,
-        size: 80,
-        color: Colors.white70,
-      );
+      return const Icon(Icons.insert_drive_file,
+          size: 80, color: Colors.white70);
   }
 }
 
@@ -40,18 +39,18 @@ class _HomeScreenState extends State<HomeScreen> {
   final LoginService loginService = LoginService();
   final ImagePicker _picker = ImagePicker();
   MediaType _selectedTab = MediaType.photos;
-  //final List<UploadedFile> uploadedFiles = [];
+
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<bool> _showFabNotifier = ValueNotifier(true);
   late Box<UploadedFile> mediaBox;
+  bool _isLoading = true;
+  final Map<int, Uint8List> _thumbCache = {};
 
   @override
   void initState() {
     super.initState();
     mediaBox = Hive.box<UploadedFile>('mediaBox');
-    if (mediaBox.isEmpty) {
-      fetchFilesFromBackend();
-    }
+    fetchFilesFromBackend();
 
     _scrollController.addListener(() {
       if (_scrollController.position.userScrollDirection ==
@@ -72,53 +71,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> fetchFilesFromBackend() async {
+    setState(() => _isLoading = true);
+
     final fetched = await loginService.fetchMedia();
-    print("Total files fetched: ${fetched.length}");
     await mediaBox.clear();
-    for (var f in fetched) {
-      print(
-        "${f['file_name']} | Type: ${f['type']} | Thumb: ${f['thumbnail_base64']?.length}",
+    _thumbCache.clear();
+
+    final files = fetched.map((e) {
+      return UploadedFile(
+        fileId: e['file_id'],
+        name: e['file_name'] ?? "Unnamed",
+        size: e['file_size'] ?? 0,
+        path: "",
+        type: (e['type'] ?? '').toString().toLowerCase(),
+        thumbnail: e['thumbnail_base64'],
+        caption: e['caption'],
       );
-    }
-    final files =
-        fetched
-            .map(
-              (e) => UploadedFile(
-                fileId: e['file_id'],
-                name: e['file_name'] ?? "Unnamed",
-                size: e['file_size'] ?? 0,
-                path: "",
-                type: (e['type'] ?? '').toString().toLowerCase(),
-                thumbnail: e['thumbnail_base64'],
-                caption: e['caption'],
-              ),
-            )
-            .toList();
+    }).toList();
+
     await mediaBox.addAll(files);
-    setState(() {});
+
+    setState(() => _isLoading = false);
   }
 
   Future<void> _uploadFileWithType(XFile file) async {
     await loginService.uploadFile(file, context);
-    await Future.delayed(const Duration(seconds: 1));
     await fetchFilesFromBackend();
   }
 
   Future<void> _uploadImage() async {
-    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) await _uploadFileWithType(picked);
+    final picked = await _picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) _uploadFileWithType(picked);
   }
 
   Future<void> _uploadVideo() async {
-    final XFile? picked = await _picker.pickVideo(source: ImageSource.gallery);
-    if (picked != null) await _uploadFileWithType(picked);
+    final picked = await _picker.pickVideo(source: ImageSource.gallery);
+    if (picked != null) _uploadFileWithType(picked);
   }
 
   Future<void> _uploadFile() async {
     final result = await FilePicker.platform.pickFiles();
-    if (result != null && result.files.single.path != null) {
-      final path = result.files.single.path!;
-      await _uploadFileWithType(XFile(path));
+    if (result?.files.single.path != null) {
+      _uploadFileWithType(XFile(result!.files.single.path!));
     }
   }
 
@@ -131,37 +125,36 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showUploadOptions() {
     showModalBottomSheet(
       context: context,
-      builder:
-          (context) => SafeArea(
-            child: Wrap(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.image),
-                  title: const Text("Upload Photo"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _uploadImage();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.video_collection),
-                  title: const Text("Upload Video"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _uploadVideo();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.insert_drive_file),
-                  title: const Text("Upload File (Docs, APKs, Others)"),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _uploadFile();
-                  },
-                ),
-              ],
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text("Upload Photo"),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadImage();
+              },
             ),
-          ),
+            ListTile(
+              leading: const Icon(Icons.video_collection),
+              title: const Text("Upload Video"),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadVideo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file),
+              title: const Text("Upload File (Docs, APKs, Others)"),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadFile();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -183,7 +176,10 @@ class _HomeScreenState extends State<HomeScreen> {
         case MediaType.apks:
           return file.name.toLowerCase().endsWith('.apk');
         case MediaType.others:
-          return !(file.type == 'photo' || file.type == 'video' || file.type == 'doc' || file.name.toLowerCase().endsWith('.apk'));
+          return !(file.type == 'photo' ||
+              file.type == 'video' ||
+              file.type == 'doc' ||
+              file.name.toLowerCase().endsWith('.apk'));
       }
     }).toList();
   }
@@ -219,53 +215,27 @@ class _HomeScreenState extends State<HomeScreen> {
         return Card(
           elevation: 4,
           color: Colors.grey[900],
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child:
-                      (file.thumbnail != null && file.thumbnail!.isNotEmpty)
-                          ? Builder(
-                            builder: (context) {
-                              try {
-                                final safePreview = file.thumbnail!.substring(
-                                  0,
-                                  file.thumbnail!.length.clamp(0, 30),
-                                );
-                                print(
-                                  "Thumbnail for ${file.name}: $safePreview...",
-                                );
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.memory(
-                                    base64Decode(file.thumbnail!),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      print(
-                                        "Error rendering image for ${file.name}: $error",
-                                      );
-                                      return const Icon(
-                                        Icons.broken_image,
-                                        size: 80,
-                                        color: Colors.white70,
-                                      );
-                                    },
-                                  ),
-                                );
-                              } catch (e) {
-                                print(
-                                  "Thumbnail decode failed for ${file.name}: $e",
-                                );
-                                return _buildFallbackIcon(file.type);
-                              }
-                            },
-                          )
-                          : _buildFallbackIcon(file.type),
+                  child: (file.thumbnail != null &&
+                      file.thumbnail!.isNotEmpty)
+                      ? ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.memory(
+                      _thumbCache.putIfAbsent(
+                        file.fileId,
+                            () => base64Decode(file.thumbnail!),
+                      ),
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                      : _buildFallbackIcon(file.type),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -273,9 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
+                      color: Colors.white, fontWeight: FontWeight.w500),
                 ),
                 Text(
                   formatFileSize(file.size),
@@ -368,25 +336,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color.fromRGBO(244, 225, 102, 1.0),
+      backgroundColor: const Color.fromRGBO(244, 225, 102, 1),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Center(
           child: Text(
             _selectedTab.name.toUpperCase(),
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w500,
-              color: Color.fromRGBO(0, 0, 0, 1.0),
-            ),
-            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+                color: Colors.black),
           ),
         ),
       ),
-      body: _buildFileGrid(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildFileGrid(),
       floatingActionButton: ValueListenableBuilder<bool>(
         valueListenable: _showFabNotifier,
-        builder: (context, showFab, child) {
+        builder: (context, showFab, _) {
           return AnimatedSlide(
             offset: showFab ? Offset.zero : const Offset(0, 2),
             duration: const Duration(milliseconds: 300),
@@ -412,26 +380,23 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Color.fromRGBO(244, 225, 102, 1.0),
-        selectedItemColor: Color.fromRGBO(191, 107, 207, 1.0),
-        unselectedItemColor: Color.fromRGBO(0, 0, 0, 1.0),
+        backgroundColor: const Color.fromRGBO(244, 225, 102, 1),
+        selectedItemColor:
+        const Color.fromRGBO(191, 107, 207, 1),
+        unselectedItemColor: Colors.black,
         currentIndex: _selectedTab.index,
         onTap: _onTabSelected,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.photo_library),
-            label: 'Photos',
-          ),
+              icon: Icon(Icons.photo_library), label: 'Photos'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.video_library),
-            label: 'Videos',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Docs'),
-          BottomNavigationBarItem(icon: Icon(Icons.android), label: 'APKs'),
+              icon: Icon(Icons.video_library), label: 'Videos'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.more_horiz),
-            label: 'Others',
-          ),
+              icon: Icon(Icons.description), label: 'Docs'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.android), label: 'APKs'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.more_horiz), label: 'Others'),
         ],
       ),
     );
