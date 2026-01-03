@@ -1,12 +1,20 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
-class UserProvider extends ChangeNotifier {
-  String _phone = '';
+final userProvider =
+StateNotifierProvider<UserNotifier, String>(
+      (ref) => UserNotifier(),
+);
 
-  String get phone => _phone;
+class UserNotifier extends StateNotifier<String> {
+  UserNotifier() : super('');
 
-  set setphone(String newName) {
-    _phone = newName;
-    notifyListeners();
+  String get phone => state;
+
+  void setPhone(String newPhone) {
+    state = newPhone;
+  }
+
+  void clear() {
+    state = '';
   }
 }
