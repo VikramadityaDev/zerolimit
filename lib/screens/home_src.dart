@@ -1,172 +1,138 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:zerolimit/models/uploaded_file.dart';
-import 'package:zerolimit/services/login_service.dart';
+
+import '../models/uploaded_file.dart';
+import '../providers/login_service_provider.dart';
+import '../services/login_service.dart';
+import '../providers/upload_provider.dart';
 
 enum MediaType { photos, videos, docs, apks, others }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+/// ---------------- PROVIDERS ----------------
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
+final selectedTabProvider = StateProvider<MediaType>((ref) => MediaType.photos);
 
-Widget _buildFallbackIcon(String? type) {
-  switch (type) {
-    case 'photo':
-      return const Icon(Icons.image, size: 80, color: Colors.white70);
-    case 'video':
-      return const Icon(Icons.videocam, size: 80, color: Colors.white70);
-    case 'doc':
-    case 'document':
-      return const Icon(Icons.description, size: 80, color: Colors.white70);
-    case 'apk':
-      return const Icon(Icons.android, size: 80, color: Colors.white70);
-    default:
-      return const Icon(Icons.insert_drive_file,
-          size: 80, color: Colors.white70);
+final mediaProvider =
+    StateNotifierProvider<MediaNotifier, AsyncValue<List<UploadedFile>>>(
+      (ref) => MediaNotifier(),
+    );
+
+Uint8List? safeBase64Decode(String? b64) {
+  if (b64 == null) return null;
+
+  final cleaned = b64
+      .replaceAll('\n', '')
+      .replaceAll('\r', '')
+      .replaceAll(' ', '');
+
+  if (cleaned.isEmpty) return null;
+
+  try {
+    return base64Decode(cleaned);
+  } catch (e) {
+    debugPrint('Base64 decode failed: $e');
+    return null;
   }
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final LoginService loginService = LoginService();
-  final ImagePicker _picker = ImagePicker();
-  MediaType _selectedTab = MediaType.photos;
+/// ---------------- STATE NOTIFIER ----------------
 
-  final ScrollController _scrollController = ScrollController();
-  final ValueNotifier<bool> _showFabNotifier = ValueNotifier(true);
-  late Box<UploadedFile> mediaBox;
-  bool _isLoading = true;
-  final Map<int, Uint8List> _thumbCache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    mediaBox = Hive.box<UploadedFile>('mediaBox');
-    fetchFilesFromBackend();
-
-    _scrollController.addListener(() {
-      if (_scrollController.position.userScrollDirection ==
-          ScrollDirection.reverse) {
-        if (_showFabNotifier.value) _showFabNotifier.value = false;
-      } else if (_scrollController.position.userScrollDirection ==
-          ScrollDirection.forward) {
-        if (!_showFabNotifier.value) _showFabNotifier.value = true;
-      }
-    });
+class MediaNotifier extends StateNotifier<AsyncValue<List<UploadedFile>>> {
+  MediaNotifier() : super(const AsyncLoading()) {
+    _init();
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _showFabNotifier.dispose();
-    super.dispose();
-  }
+  final LoginService _service = LoginService();
+  final Box<UploadedFile> _box = Hive.box<UploadedFile>('mediaBox');
+  final Map<int, Uint8List?> thumbCache = {};
+  int _lastMessageId = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  static const int _pageSize = 20;
+  Set<int> _knownIds = {};
 
-  Future<void> fetchFilesFromBackend() async {
-    setState(() => _isLoading = true);
+  void _init() {
+    if (_box.isNotEmpty) {
+      final cached = _box.values.toList();
+      state = AsyncData(cached);
 
-    final fetched = await loginService.fetchMedia();
-    await mediaBox.clear();
-    _thumbCache.clear();
-
-    final files = fetched.map((e) {
-      return UploadedFile(
-        fileId: e['file_id'],
-        name: e['file_name'] ?? "Unnamed",
-        size: e['file_size'] ?? 0,
-        path: "",
-        type: (e['type'] ?? '').toString().toLowerCase(),
-        thumbnail: e['thumbnail_base64'],
-        caption: e['caption'],
-      );
-    }).toList();
-
-    await mediaBox.addAll(files);
-
-    setState(() => _isLoading = false);
-  }
-
-  Future<void> _uploadFileWithType(XFile file) async {
-    await loginService.uploadFile(file, context);
-    await fetchFilesFromBackend();
-  }
-
-  Future<void> _uploadImage() async {
-    final picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) _uploadFileWithType(picked);
-  }
-
-  Future<void> _uploadVideo() async {
-    final picked = await _picker.pickVideo(source: ImageSource.gallery);
-    if (picked != null) _uploadFileWithType(picked);
-  }
-
-  Future<void> _uploadFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    if (result?.files.single.path != null) {
-      _uploadFileWithType(XFile(result!.files.single.path!));
+      _knownIds = cached.map((e) => e.fileId).toSet();
+      _lastMessageId = cached.last.fileId;
+    } else {
+      fetchNextPage();
     }
   }
 
-  void _onTabSelected(int index) {
-    setState(() {
-      _selectedTab = MediaType.values[index];
-    });
+
+  Future<void> fetchNextPage() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    _isLoadingMore = true;
+
+    try {
+      final fetched = await _service.fetchMedia(
+        offsetId: _lastMessageId,
+        limit: _pageSize,
+      );
+
+      if (fetched.isEmpty) {
+        _hasMore = false;
+        return;
+      }
+
+      final fetchedLastId = fetched.last['file_id'];
+
+      final newFiles = fetched
+          .where((e) => !_knownIds.contains(e['file_id']))
+          .map((e) {
+        final id = e['file_id'];
+        _knownIds.add(id);
+
+        return UploadedFile(
+          fileId: id,
+          name: e['file_name'],
+          size: e['file_size'],
+          path: '',
+          type: e['type'],
+          caption: e['caption'],
+          thumbBytes: safeBase64Decode(e['thumbnail_base64']),
+        );
+      })
+          .toList();
+
+
+      _lastMessageId = fetchedLastId;
+      await _box.addAll(newFiles);
+      state = AsyncData(_box.values.toList());
+
+    } catch (_) {
+      // offline-safe: keep Hive data
+    } finally {
+      _isLoadingMore = false;
+    }
   }
 
-  void _showUploadOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.image),
-              title: const Text("Upload Photo"),
-              onTap: () {
-                Navigator.pop(context);
-                _uploadImage();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.video_collection),
-              title: const Text("Upload Video"),
-              onTap: () {
-                Navigator.pop(context);
-                _uploadVideo();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.insert_drive_file),
-              title: const Text("Upload File (Docs, APKs, Others)"),
-              onTap: () {
-                Navigator.pop(context);
-                _uploadFile();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// FILTERING (case-insensitive, robust)
+  List<UploadedFile> filtered(MediaType tab, [List<UploadedFile>? source]) {
+    final all =
+        (source ?? _box.values.toList())
+            .where(
+              (f) => (f.caption ?? '').toLowerCase().contains(
+                'uploaded via zerolimit',
+              ),
+            )
+            .toList();
 
-  List<UploadedFile> _getFilteredFiles() {
-    final all = mediaBox.values.toList();
-
-    final filteredByCaption = all.where((file) {
-      return file.caption?.trim() == "uploaded via zerolimit";
-    }).toList();
-
-    return filteredByCaption.where((file) {
-      switch (_selectedTab) {
+    return all.where((file) {
+      switch (tab) {
         case MediaType.photos:
           return file.type == 'photo';
         case MediaType.videos:
@@ -184,24 +150,151 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  String formatFileSize(int bytes) {
-    if (bytes < 1024) return "$bytes B";
-    final kb = bytes / 1024;
-    if (kb < 1024) return "${kb.toStringAsFixed(1)} KB";
-    return "${(kb / 1024).toStringAsFixed(1)} MB";
+  Future<int> addUploadedFileImmediately({
+    required String fileName,
+    required String type,
+    String? caption,
+  }) async {
+    final tempId = DateTime.now().millisecondsSinceEpoch;
+    final current = state.asData?.value ?? <UploadedFile>[];
+
+    final newFile = UploadedFile(
+      fileId: tempId,
+      name: fileName,
+      size: 0,
+      path: '',
+      type: type,
+      caption: caption,
+      thumbBytes: null,
+    );
+
+    state = AsyncData([newFile, ...current]);
+    return tempId;
   }
 
-  Widget _buildFileGrid() {
-    final files = _getFilteredFiles();
+  void replaceTempWithReal(int tempId, UploadedFile realFile){
+    final current = state.asData?.value ?? <UploadedFile>[];
+    final index = current.indexWhere((f) => f.fileId == tempId);
+    if (index == -1) return;
+
+    final updated = [...current];
+    updated[index] = realFile;
+    state = AsyncData(updated);
+  }
+}
+
+/// ---------------- HOME UI ----------------
+
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tab = ref.watch(selectedTabProvider);
+    final mediaState = ref.watch(mediaProvider);
+
+    return Scaffold(
+      backgroundColor: const Color.fromRGBO(244, 225, 102, 1),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        title: Text(
+          tab.name.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: mediaState.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error:
+                  (_, __) => const Center(child: Text("Failed to load files")),
+              data: (_) => const _FileGrid(),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: const _UploadFab(),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: tab.index,
+        onTap:
+            (i) =>
+                ref.read(selectedTabProvider.notifier).state =
+                    MediaType.values[i],
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.photo_library), label: 'Photos',),
+          BottomNavigationBarItem(icon: Icon(Icons.video_library), label: 'Videos',),
+          BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Docs'),
+          BottomNavigationBarItem(icon: Icon(Icons.android), label: 'APKs'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.more_horiz),
+            label: 'Others',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> saveBytesToFile(List<int> bytes, String fileName) async {
+  final directory = Directory('/storage/emulated/0/Download');
+  final file = File('${directory.path}/$fileName');
+  await file.writeAsBytes(bytes);
+}
+
+/// ---------------- GRID ----------------
+
+class _FileGrid extends ConsumerStatefulWidget {
+  const _FileGrid({super.key});
+
+  @override
+  ConsumerState<_FileGrid> createState() => _FileGridState();
+}
+
+class _FileGridState extends ConsumerState<_FileGrid> {
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+
+    _controller.addListener(() {
+      if (_controller.position.pixels >=
+          _controller.position.maxScrollExtent - 300) {
+        ref.read(mediaProvider.notifier).fetchNextPage();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+@override
+Widget build(BuildContext context) {
+    final tab = ref.watch(selectedTabProvider);
+    final notifier = ref.read(mediaProvider.notifier);
+    final mediaState = ref.watch(mediaProvider);
+    final files = mediaState.when(
+      data: (list) => notifier.filtered(tab),
+      loading: () => <UploadedFile>[],
+      error: (_, __) => <UploadedFile>[],
+    );
 
     if (files.isEmpty) {
       return const Center(child: Text("No files uploaded yet."));
     }
-
     return GridView.builder(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(10),
+      controller: _controller,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         childAspectRatio: 0.75,
@@ -211,56 +304,58 @@ class _HomeScreenState extends State<HomeScreen> {
       itemCount: files.length,
       itemBuilder: (context, index) {
         final file = files[index];
-
+        final thumb = notifier.thumbCache.putIfAbsent(
+          file.fileId,
+          () => file.thumbBytes,
+        );
         return Card(
           elevation: 4,
           color: Colors.grey[900],
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: (file.thumbnail != null &&
-                      file.thumbnail!.isNotEmpty)
-                      ? ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.memory(
-                      _thumbCache.putIfAbsent(
-                        file.fileId,
-                            () => base64Decode(file.thumbnail!),
-                      ),
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                      : _buildFallbackIcon(file.type),
+                  child:
+                      thumb != null
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.memory(
+                              thumb,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              gaplessPlayback: true,
+                            ),
+                          )
+                          : const Icon(Icons.insert_drive_file, size: 80),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  file.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  formatFileSize(file.size),
-                  style: const TextStyle(color: Colors.white60),
+                Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          LoginService().downloadMedia(
-                            context: context,
-                            fileId: file.fileId,
-                            fileName: file.name,
-                            type: file.type ?? 'other',
-                            onProgress: (received, total) {},
+                        onPressed: () async {
+                          final bytes = await ref
+                              .read(loginServiceProvider)
+                              .downloadMedia(file.fileId);
+                          await saveBytesToFile(bytes, file.name);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('File saved to Downloads'),
+                            ),
                           );
                         },
                         icon: const Icon(Icons.download, size: 16),
@@ -292,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          LoginService().viewMedia(
+                          ref.read(loginServiceProvider).viewMedia(
                             context,
                             file.fileId,
                             file.type ?? 'other',
@@ -332,73 +427,203 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+}
+
+/// ---------------- FAB ----------------
+
+class _UploadFab extends ConsumerWidget {
+  const _UploadFab();
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromRGBO(244, 225, 102, 1),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Center(
-          child: Text(
-            _selectedTab.name.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
-                color: Colors.black),
-          ),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildFileGrid(),
-      floatingActionButton: ValueListenableBuilder<bool>(
-        valueListenable: _showFabNotifier,
-        builder: (context, showFab, _) {
-          return AnimatedSlide(
-            offset: showFab ? Offset.zero : const Offset(0, 2),
-            duration: const Duration(milliseconds: 300),
-            child: AnimatedOpacity(
-              opacity: showFab ? 1 : 0,
-              duration: const Duration(milliseconds: 300),
-              child: FloatingActionButton.extended(
-                onPressed: _showUploadOptions,
-                label: const Text(
-                  'Upload',
-                  style: TextStyle(color: Color.fromRGBO(0, 0, 0, 1.0),
-                  ),
-                ),
-                icon: const Icon(
-                  Icons.upload,
-                  color: Color.fromRGBO(0, 0, 0, 1.0),
-                ),
-                backgroundColor: const Color.fromRGBO(244, 225, 102, 1.0),
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FloatingActionButton(
+      onPressed: () => _showOptions(context, ref),
+      child: const Icon(Icons.upload),
+    );
+  }
+
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(mediaProvider.notifier);
+    final picker = ImagePicker();
+
+    showModalBottomSheet(
+      context: context,
+      builder:
+          (_) => Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image),
+                title: const Text("Upload Photo"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final f = await picker.pickImage(source: ImageSource.gallery);
+                  if (f != null) {
+                    final service = ref.read(loginServiceProvider);
+                    showUploadSnackBar(context, ref, fileName: f.name);
+                    try {
+                      final tempId = await notifier.addUploadedFileImmediately(
+                        fileName: f.name,
+                        type: 'photo',
+                        caption: 'uploaded via zerolimit',
+                      );
+                      final response = await service.uploadFile(
+                        f,
+                        onProgress: (p) {
+                          ref.read(uploadProgressProvider.notifier).state = p;
+                        },
+                      );
+                      final realFile = UploadedFile(
+                        fileId: response['file_id'],
+                        name: response['file_name'],
+                        size: response['file_size'] ?? 0,
+                        path: '',
+                        type: 'photo',
+                        caption: response['caption'],
+                        thumbBytes: safeBase64Decode(response['thumbnail_base64']),
+                      );
+                      notifier.replaceTempWithReal(tempId, realFile);
+                      await Hive.box<UploadedFile>('mediaBox').add(realFile);
+                      ref.read(uploadProgressProvider.notifier).state = null;
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    } catch (e) {
+                      ref.read(uploadProgressProvider.notifier).state = null;
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(content: Text('Upload failed')),
+                        );
+                    }
+                  }
+                },
               ),
-            ),
+              ListTile(
+                leading: const Icon(Icons.video_collection),
+                title: const Text("Upload Video"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final f = await picker.pickVideo(source: ImageSource.gallery);
+                  if (f != null) {
+                    final service = ref.read(loginServiceProvider);
+                    showUploadSnackBar(context, ref, fileName: f.name);
+                    try {
+                      final tempId = await notifier.addUploadedFileImmediately(
+                        fileName: f.name,
+                        type: 'video',
+                        caption: 'uploaded via zerolimit',
+                      );
+                      final response = await service.uploadFile(
+                        f,
+                        onProgress: (p) {
+                          ref.read(uploadProgressProvider.notifier).state = p;
+                        },
+                      );
+                      final realFile = UploadedFile(
+                        fileId: response['file_id'],
+                        name: response['file_name'],
+                        size: response['file_size'] ?? 0,
+                        path: '',
+                        type: 'video',
+                        caption: response['caption'],
+                        thumbBytes: safeBase64Decode(response['thumbnail_base64']),
+                      );
+                      notifier.replaceTempWithReal(tempId, realFile);
+                      await Hive.box<UploadedFile>('mediaBox').add(realFile);
+                      ref.read(uploadProgressProvider.notifier).state = null;
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    } catch (e) {
+                      ref.read(uploadProgressProvider.notifier).state = null;
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(content: Text('Upload failed')),
+                        );
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: const Text("Upload File"),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final service = ref.read(loginServiceProvider);
+                    final r = await FilePicker.platform.pickFiles();
+                    if (r == null || r.files.isEmpty || r.files.single.path == null) {
+                      return;
+                    }
+                    final file = XFile(r.files.single.path!);
+                    final tempId = await notifier.addUploadedFileImmediately(
+                      fileName: r.files.single.name,
+                      type: 'other',
+                      caption: 'uploaded via zerolimit',
+                    );
+
+                    final response = await service.uploadFile(
+                      file,
+                      onProgress: (p) {
+                        ref.read(uploadProgressProvider.notifier).state = p;
+                      },
+                    );
+
+                    ref.read(uploadProgressProvider.notifier).state = null;
+
+                    final realFile = UploadedFile(
+                      fileId: response['file_id'],
+                      name: response['file_name'],
+                      size: response['file_size'] ?? 0,
+                      path: '',
+                      type: 'other',
+                      caption: response['caption'],
+                      thumbBytes: safeBase64Decode(response['thumbnail_base64']),
+                    );
+
+                    notifier.replaceTempWithReal(tempId, realFile);
+                    await Hive.box<UploadedFile>('mediaBox').add(realFile);
+                    ref.read(uploadProgressProvider.notifier).state = null;
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  }
+              ),
+            ],
+          ),
+    );
+  }
+}
+
+void showUploadSnackBar(
+  BuildContext context,
+  WidgetRef ref, {
+  required String fileName,
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(days: 1),
+      content: Consumer(
+        builder: (context, ref, _) {
+          final p = ref.watch(uploadProgressProvider);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              if (p != null) ...[
+                LinearProgressIndicator(value: p),
+                const SizedBox(height: 6),
+                Text('${(p * 100).toInt()}%'),
+              ] else
+                const Text('Finalizing upload…'),
+            ],
           );
         },
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color.fromRGBO(244, 225, 102, 1),
-        selectedItemColor:
-        const Color.fromRGBO(191, 107, 207, 1),
-        unselectedItemColor: Colors.black,
-        currentIndex: _selectedTab.index,
-        onTap: _onTabSelected,
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.photo_library), label: 'Photos'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.video_library), label: 'Videos'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.description), label: 'Docs'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.android), label: 'APKs'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.more_horiz), label: 'Others'),
-        ],
-      ),
-    );
-  }
+    ),
+  );
 }
