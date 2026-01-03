@@ -16,15 +16,24 @@ This repo is private until development is complete.
 - ✅ Leverage Telegram's "Saved Messages" as a **zero-cost storage** backend.
 - ✅ Deploy the backend using cloud hosting service.
 
-## 🚀 Features
-- 📱 **Phone Number Login via Telegram**
-- 🔐 **Session-based Authentication**
-- 📨 **Send OTP and Handle 2FA**
-- 📤 **Send Image/Video to Saved Messages**
-- 💬 **Simple Message Upload Test Route**
-- 📂 **View Uploaded Media**
-- 📤 **Download Media with Previews**
-- 🗂️ **Tag & Categorize Files**
+## Features
+- **Phone Number Login via Telegram**
+- **Session-based Authentication (StringSession)**
+- **OTP Verification & 2FA Support**
+- **Upload Images, Videos & Files to Saved Messages**
+- **Original Quality Uploads (No Compression)**
+- **Real-time Upload Progress Tracking**
+- **Instant UI Update After Upload (No Full Reload)**
+- **Automatic Thumbnail Generation**
+- **Cached Thumbnails (No Re-downloads)**
+- **View Uploaded Media**
+- **Download Media with Previews**
+- **Hive-based Local Caching**
+- **Offline Access to Cached Media**
+- **Infinite Scroll Pagination**
+- **Optimized Backend Fetching**
+- **No Duplicate Media Entries**
+- **Tag & Categorize Files (Photos, Videos, Docs, APKs, Others)**
 
 ## Tiered Upload Limits
 
