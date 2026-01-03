@@ -7,8 +7,7 @@ Zerolimit is a cloud storage app that lets users securely upload and access thei
 </p>
 
  ## Backend Repository
-You can find the backend code here:  
-[Zerolimit Backend](https://github.com/VikramadityaDev/zerolimit_backend)
+This repo is private until development is complete.
 
 ## Project Goals
 - ✅ Offering **unlimited free storage** without depending on traditional cloud services like Google Drive or Dropbox.
