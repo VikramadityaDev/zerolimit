@@ -65,16 +65,6 @@ To enable 4GB uploads, users must activate a Telegram Premium subscription.
 - **Multi-file Upload Support**
 - **Sort by Date, Size & Type**
 - **Light / Dark Theme Toggle**
-- **Folder / Collection Support**
-- **File Rename & Delete from App**
-- **Background Sync for New Media**
-- **Pull-to-Refresh Media Updates**
-- **Cross-device Sync Optimization**
-- **Improved Error & Retry Handling**
-- **Global Search Across Files & Captions**
-- **Share Files via Public / Private Links**
-- **Possible integration: multi-file uploads**
-- **Auto‑upload from user's gallery to Telegram**
 
 ## Tech Stack
 | Layer         | Stack / Tools            |
